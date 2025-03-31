@@ -33,13 +33,23 @@ bcrypt = Bcrypt(app)
 nlp = spacy.load("en_core_web_md")
 
 def log_request(route_name, data):
+    print("-----------------------[ REQUEST ]-------------------------------")
     logger.debug(f"[{route_name}] Request Data: {data}")
+    print("------------------------------------------------------")
+
 
 def log_response(route_name, response):
+    print("*********************[ RESPONSE ]***************************")
+
     logger.debug(f"[{route_name}] Response: {response}")
+    print("************************************************")
+
+
 
 def convert_to_sign_language(text):
-    """ Converts English text into simplified Sign Language order. """
+    """
+    Converts English text into a simplified Sign Language order (VOS or OSV).
+    """
     doc = nlp(text)
     sign_sentence = []
     
@@ -52,37 +62,44 @@ def convert_to_sign_language(text):
     for token in doc:
         lemma = token.lemma_.upper()
         
+        # Ignore auxiliary verbs, determiners, prepositions, and punctuation
         if token.pos_ in ["AUX", "DET", "ADP", "PUNCT"]:
             continue
 
+        # Capture question words (e.g., WHERE, WHAT)
         if lemma in question_words:
             wh_word = lemma
             continue
 
+        # Identify subject
         if token.dep_ in ["nsubj", "nsubjpass"]:
             subject = lemma
             continue
 
+        # Identify main verb
         if token.dep_ == "ROOT":
             verb = lemma
             continue
 
+        # Identify objects
         if token.dep_ in ["dobj", "attr", "prep", "pobj"]:
             obj.append(lemma)
             continue
 
         obj.append(lemma)
 
+    # Build the final sentence
     if verb:
-        sign_sentence.insert(0, verb)
+        sign_sentence.insert(0, verb)  # Verb first
     if obj:
-        sign_sentence.extend(obj)
+        sign_sentence.extend(obj)  # Object follows verb
     if subject:
-        sign_sentence.append(subject)
+        sign_sentence.append(subject)  # Subject at the end
     if wh_word:
-        sign_sentence.append(wh_word)
+        sign_sentence.append(wh_word)  # WH-Question at the end
 
     return " ".join(sign_sentence)
+
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -171,6 +188,19 @@ def record_speech():
         return jsonify(response)
     except Exception as e:
         logger.error(f"[record_speech] Error: {str(e)}")
+        return jsonify({'error': 'Internal Server Error'}), 500
+@app.route('/speech_logs', methods=['GET'])
+@jwt_required()
+def get_speech_logs():
+    try:
+        user_email = get_jwt_identity()
+        logs = list(mongo.db.speech_logs.find({'user_email': user_email}, {'_id': 0}))
+        
+        if logs:
+            return jsonify({'logs': logs})
+        return jsonify({'message': 'No speech logs available'})
+    except Exception as e:
+        logger.error(f"[get_speech_logs] Error: {str(e)}")
         return jsonify({'error': 'Internal Server Error'}), 500
 
 if __name__ == '__main__':
